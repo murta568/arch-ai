@@ -2,14 +2,13 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from groq import Groq
 from tavily import TavilyClient
 
-# Load variables from local .env file
 load_dotenv()
 
-# Read keys safely from environment variables (No hardcoded secret keys!)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
@@ -29,9 +28,10 @@ app.add_middleware(
 class QueryRequest(BaseModel):
     prompt: str
 
+# Serve index.html as the home page
 @app.get("/")
 def read_root():
-    return {"status": "ARCH AI Backend running successfully"}
+    return FileResponse("index.html")
 
 @app.post("/chat")
 def chat(request: QueryRequest):

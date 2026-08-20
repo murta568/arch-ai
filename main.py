@@ -6,20 +6,18 @@ from pydantic import BaseModel
 from groq import Groq
 from tavily import TavilyClient
 
-# Load environment variables from .env file or environment
+# Load variables from local .env file
 load_dotenv()
 
-# Retrieve API keys from environment
-GROQ_API_KEY = os.getenv("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")
-TAVILY_API_KEY = os.getenv("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")
+# Read keys safely from environment variables (No hardcoded secret keys!)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
-# Initialize API clients
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
 app = FastAPI()
 
-# Enable CORS for frontend requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,18 +31,17 @@ class QueryRequest(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"status": "ARCH AI API is running"}
+    return {"status": "ARCH AI Backend running successfully"}
 
 @app.post("/chat")
 def chat(request: QueryRequest):
-    if not GROQ_API_KEY:
+    if not groq_client:
         raise HTTPException(
             status_code=500, 
-            detail="GROQ_API_KEY is not configured in environment variables."
+            detail="GROQ_API_KEY missing. Ensure it is configured in your environment."
         )
     
     try:
-        # Fetch search context if Tavily is configured
         search_context = ""
         if tavily_client:
             try:
@@ -54,13 +51,11 @@ def chat(request: QueryRequest):
             except Exception:
                 search_context = ""
 
-        # Construct system and user prompt
         system_instruction = "You are ARCH AI, an intelligent and helpful AI assistant."
         full_prompt = request.prompt
         if search_context:
             full_prompt = f"Context:\n{search_context}\n\nUser Question: {request.prompt}"
 
-        # Call Groq API
         completion = groq_client.chat.completions.create(
             model="openai/gpt-oss-120b",
             messages=[
@@ -74,4 +69,4 @@ def chat(request: QueryRequest):
         return {"response": completion.choices[0].message.content}
 
     except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARCH AI</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            display: flex;
+            height: 100vh;
+            background-color: #212121;
+            color: #ececec;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background-color: #171717;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #303030;
+        }
+
+        .new-chat-btn {
+            background-color: transparent;
+            border: 1px solid #424242;
+            color: #fff;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .new-chat-btn:hover {
+            background-color: #212121;
+        }
+
+        /* Main Chat Window */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+        }
+
+        .messages-box {
+            width: 100%;
+            max-width: 768px;
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .message {
+            display: flex;
+            gap: 16px;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.user .content {
+            background-color: #303030;
+            padding: 10px 16px;
+            border-radius: 20px;
+            max-width: 70%;
+        }
+
+        .message.assistant .content {
+            background-color: transparent;
+            width: 100%;
+        }
+
+        .badge-search {
+            display: inline-block;
+            background-color: #1e3a8a;
+            color: #93c5fd;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-bottom: 6px;
+        }
+
+        /* Input Bar */
+        .input-container {
+            width: 100%;
+            max-width: 768px;
+            padding: 20px;
+        }
+
+        .input-box {
+            display: flex;
+            align-items: center;
+            background-color: #2f2f2f;
+            border-radius: 24px;
+            padding: 8px 16px;
+            border: 1px solid #424242;
+        }
+
+        .input-box input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-size: 15px;
+            padding: 8px;
+        }
+
+        .send-btn {
+            background-color: #676767;
+            border: none;
+            color: #171717;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        .send-btn.active {
+            background-color: #ffffff;
+            color: #000000;
+        }
+
+        .loading {
+            color: #b4b4b4;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <button class="new-chat-btn" onclick="clearChat()">+ New Chat</button>
+    </div>
+
+    <div class="chat-container">
+        <div class="messages-box" id="messagesBox">
+            <div class="message assistant">
+                <div class="content">How can I help you today?</div>
+            </div>
+        </div>
+
+        <div class="input-container">
+            <div class="input-box">
+                <input type="text" id="userInput" placeholder="Message ChatGPT..." oninput="toggleButton()" onkeydown="handleKeyPress(event)">
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">↑</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const messagesBox = document.getElementById('messagesBox');
+
+        function toggleButton() {
+            if (userInput.value.trim() !== "") {
+                sendBtn.classList.add('active');
+            } else {
+                sendBtn.classList.remove('active');
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function clearChat() {
+            messagesBox.innerHTML = `
+                <div class="message assistant">
+                    <div class="content">How can I help you today?</div>
+                </div>`;
+        }
+
+        async function sendMessage() {
+            const query = userInput.value.trim();
+            if (!query) return;
+
+            // Render User Message
+            messagesBox.innerHTML += `
+                <div class="message user">
+                    <div class="content">${query}</div>
+                </div>`;
+            
+            userInput.value = '';
+            toggleButton();
+            messagesBox.scrollTop = messagesBox.scrollHeight;
+
+            // Temporary Loading Placeholder
+            const loadingId = 'loading-' + Date.now();
+            messagesBox.innerHTML += `
+                <div class="message assistant" id="${loadingId}">
+                    <div class="content loading">Thinking...</div>
+                </div>`;
+            messagesBox.scrollTop = messagesBox.scrollHeight;
+
+            try {
+                const response = await fetch(`/ask?question=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                const loadingElement = document.getElementById(loadingId);
+                
+                let searchBadge = data.used_web_search ? `<div class="badge-search">🌐 Searched the Web</div><br>` : '';
+
+                loadingElement.innerHTML = `
+                    <div class="content">
+                        ${searchBadge}${data.answer}
+                    </div>`;
+
+            } catch (error) {
+                const loadingElement = document.getElementById(loadingId);
+                loadingElement.innerHTML = `
+                    <div class="content" style="color: #f87171;">
+                        Error connecting to the backend server.
+                    </div>`;
+            }
+
+            messagesBox.scrollTop = messagesBox.scrollHeight;
+        }
+    </script>
+</body>
+</html>

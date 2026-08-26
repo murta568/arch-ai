@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from typing import List, Optional
 from groq import Groq
 from tavily import TavilyClient
 
@@ -27,19 +28,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class Message(BaseModel):
+    role: str
+    content: str
+
 class QueryRequest(BaseModel):
     prompt: str
+    history: Optional[List[Message]] = []
 
 class TitleRequest(BaseModel):
     prompt: str
 
 def extract_location(user_prompt: str) -> str:
-    """Extracts only the city/location name from the user's prompt."""
+    """Extracts only the location name from the user prompt."""
     if not groq_client:
-        return user_prompt
+        return "Abu Dhabi"
     try:
         completion = groq_client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model="lopenai/gpt-oss-120b",
             messages=[
                 {
                     "role": "system",
@@ -50,16 +56,15 @@ def extract_location(user_prompt: str) -> str:
             temperature=0.1,
             max_tokens=15,
         )
-        extracted = completion.choices[0].message.content.strip()
-        return extracted if extracted else "Abu Dhabi"
+        loc = completion.choices[0].message.content.strip()
+        return loc if loc else "Abu Dhabi"
     except Exception:
         return "Abu Dhabi"
 
 def get_live_weather(raw_prompt: str) -> str:
-    """Forces an explicit live WeatherAPI call using extracted location."""
+    """Fetches real-time weather globally via WeatherAPI."""
     clean_location = extract_location(raw_prompt)
     
-    # Priority 1: WeatherAPI Call
     if WEATHERAPI_KEY:
         try:
             url = f"http://api.weatherapi.com/v1/current.json?key={WEATHERAPI_KEY.strip()}&q={clean_location}"
@@ -72,12 +77,9 @@ def get_live_weather(raw_prompt: str) -> str:
                 city = res["location"]["name"]
                 country = res["location"]["country"]
                 return f"[LIVE DATA] Real-time weather for {city}, {country}: Actual Temp: {temp_c}°C, Feels Like: {feels_c}°C, Condition: {condition}."
-            elif "error" in res:
-                print(f"WeatherAPI Error: {res['error'].get('message')}")
         except Exception as e:
             print(f"WeatherAPI Connection Error: {e}")
 
-    # Priority 2: wttr.in fallback if key is missing/failed
     try:
         url = f"https://wttr.in/{clean_location}?format=3"
         res = requests.get(url, timeout=5)
@@ -121,13 +123,11 @@ def chat(request: QueryRequest):
     try:
         context_data = []
 
-        # Keywords to force live weather search
         weather_keywords = [
             "weather", "temperature", "forecast", "climate", "rain", 
             "sunny", "hot", "cold", "degree", "temp", "rn", "now", "outside"
         ]
         
-        # Check if user prompt is asking about weather/temperature
         if any(keyword in request.prompt.lower() for keyword in weather_keywords):
             weather_info = get_live_weather(request.prompt)
             if weather_info:
@@ -145,20 +145,26 @@ def chat(request: QueryRequest):
 
         system_instruction = (
             "You are ARCH AI, an intelligent AI assistant. "
-            "You MUST use the real-time context provided to answer weather questions. "
-            "Do NOT output function calls, JSON payloads, or code snippets. Respond using simple text."
+            "You MUST use the real-time context provided to answer questions. "
+            "Respond using simple text or Markdown."
         )
         
-        full_prompt = request.prompt
+        messages = [{"role": "system", "content": system_instruction}]
+        
+        # Append conversation history
+        if request.history:
+            for msg in request.history:
+                messages.append({"role": msg.role, "content": msg.content})
+
+        current_prompt = request.prompt
         if context_data:
-            full_prompt = "Real-time Context Data:\n" + "\n".join(context_data) + f"\n\nUser Question: {request.prompt}"
+            current_prompt = "Real-time Context Data:\n" + "\n".join(context_data) + f"\n\nUser Question: {request.prompt}"
+
+        messages.append({"role": "user", "content": current_prompt})
 
         completion = groq_client.chat.completions.create(
             model="openai/gpt-oss-120b",
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": full_prompt}
-            ],
+            messages=messages,
             temperature=0.5,
             max_tokens=1024,
         )

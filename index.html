@@ -32,7 +32,6 @@
       overflow: hidden;
     }
 
-    /* Name Modal */
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -80,7 +79,6 @@
       cursor: pointer;
     }
 
-    /* Sidebar */
     .sidebar {
       width: 260px;
       background-color: var(--sidebar-bg);
@@ -186,7 +184,6 @@
       background: #3a3a3a;
     }
 
-    /* Sidebar Footer User Info */
     .sidebar-footer {
       padding: 1rem;
       border-top: 1px solid var(--border-color);
@@ -216,7 +213,6 @@
       white-space: nowrap;
     }
 
-    /* Main Content */
     .main-wrapper {
       flex: 1;
       display: flex;
@@ -349,7 +345,6 @@
 </head>
 <body>
 
-  <!-- Name Modal -->
   <div class="modal-overlay" id="nameModal">
     <div class="modal">
       <h2>Enter Your Username</h2>
@@ -358,7 +353,6 @@
     </div>
   </div>
 
-  <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <button class="new-chat-btn" onclick="startNewChat()">+ New Chat</button>
@@ -370,11 +364,9 @@
     </div>
   </div>
 
-  <!-- Main View -->
   <div class="main-wrapper">
     <top-bar>
       <button class="sidebar-toggle-btn" onclick="toggleSidebar()">
-        <!-- Two Parallel Bar Icon -->
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <line x1="4" y1="8" x2="20" y2="8"></line>
           <line x1="4" y1="16" x2="20" y2="16"></line>
@@ -440,11 +432,13 @@
         currentChatId = Date.now().toString();
       }
 
+      // Append User message explicitly as text
       appendMessage("user", prompt);
       inputEl.value = "";
       inputEl.disabled = true;
       sendBtn.disabled = true;
 
+      // Append Assistant placeholder separately
       const assistantId = appendMessage("assistant", "Thinking...");
 
       try {
@@ -460,12 +454,15 @@
         const data = await response.json();
 
         if (response.ok && data.response) {
-          document.getElementById(assistantId).innerHTML = marked.parse(data.response);
+          // Update assistant node independently without affecting user elements
+          const targetNode = document.getElementById(assistantId);
+          if (targetNode) {
+            targetNode.innerHTML = marked.parse(data.response);
+          }
 
           chatHistory.push({ role: "user", content: prompt });
           chatHistory.push({ role: "assistant", content: data.response });
 
-          // Generate 3-to-4 word title summary if new conversation
           if (chatHistory.length === 2) {
             generateSummaryTitle(prompt);
           }
@@ -513,7 +510,6 @@
       const listEl = document.getElementById("chatHistoryList");
       listEl.innerHTML = "";
 
-      // Sorted: Pinned items first
       const sorted = [...savedChats].sort((a, b) => b.pinned - a.pinned);
 
       sorted.forEach(chat => {
@@ -568,16 +564,20 @@
     function appendMessage(role, content) {
       const container = document.getElementById("chatContainer");
       
-      // Clear initial welcome message if present
       const welcome = container.querySelector('.welcome-header');
       if (welcome) welcome.remove();
 
       const msgDiv = document.createElement("div");
-      const msgId = "msg-" + Date.now();
+      const msgId = "msg-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
 
       msgDiv.id = msgId;
       msgDiv.classList.add("message", role);
-      msgDiv.innerHTML = role === "assistant" ? marked.parse(content) : escapeHtml(content);
+      
+      if (role === "user") {
+        msgDiv.textContent = content;
+      } else {
+        msgDiv.innerHTML = marked.parse(content);
+      }
 
       container.appendChild(msgDiv);
       container.scrollTop = container.scrollHeight;

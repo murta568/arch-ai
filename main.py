@@ -33,21 +33,48 @@ class QueryRequest(BaseModel):
 class TitleRequest(BaseModel):
     prompt: str
 
-def get_live_weather(location_query: str) -> str:
-    """Fetches real-time weather globally via WeatherAPI."""
+def extract_location(user_prompt: str) -> str:
+    """Extracts only the city/location name from the user's prompt."""
+    if not groq_client:
+        return user_prompt
+    try:
+        completion = groq_client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Extract ONLY the location/city name mentioned in the user prompt. Return strictly the location name, nothing else. If no clear location is found, return empty text."
+                },
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1,
+            max_tokens=15,
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception:
+        return user_prompt
+
+def get_live_weather(raw_prompt: str) -> str:
+    """Fetches real-time weather globally via WeatherAPI using clean location names."""
+    location_query = extract_location(raw_prompt)
+    if not location_query:
+        location_query = raw_prompt
+
     if WEATHERAPI_KEY:
         try:
             url = f"http://api.weatherapi.com/v1/current.json?key={WEATHERAPI_KEY}&q={location_query}"
             res = requests.get(url, timeout=5).json()
             if "current" in res:
                 temp_c = res["current"]["temp_c"]
+                feels_c = res["current"].get("feelslike_c", temp_c)
                 condition = res["current"]["condition"]["text"]
                 city = res["location"]["name"]
                 country = res["location"]["country"]
-                return f"Live weather for {city}, {country}: {temp_c}°C, {condition}."
+                return f"Live weather data for {city}, {country}: Actual Temp: {temp_c}°C, Feels Like: {feels_c}°C, Condition: {condition}."
         except Exception:
             pass
 
+    # Fallback to public endpoint
     try:
         url = f"https://wttr.in/{location_query}?format=3"
         res = requests.get(url, timeout=5)
@@ -85,13 +112,13 @@ def chat(request: QueryRequest):
     if not groq_client:
         raise HTTPException(
             status_code=500, 
-            detail="GROQ_API_KEY missing. Please configure environment variables in Vercel."
+            detail="GROQ_API_KEY missing. Configure environment variables in Vercel settings."
         )
     
     try:
         context_data = []
 
-        weather_keywords = ["weather", "temperature", "forecast", "climate", "rain", "sunny", "hot", "cold"]
+        weather_keywords = ["weather", "temperature", "forecast", "climate", "rain", "sunny", "hot", "cold", "degree", "temp"]
         if any(keyword in request.prompt.lower() for keyword in weather_keywords):
             weather_info = get_live_weather(request.prompt)
             if weather_info:

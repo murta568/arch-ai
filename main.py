@@ -12,7 +12,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
@@ -34,21 +34,21 @@ class TitleRequest(BaseModel):
     prompt: str
 
 def get_live_weather(location_query: str) -> str:
-    """Fetches real-time weather data for any location."""
-    if OPENWEATHER_API_KEY:
+    """Fetches real-time weather globally via WeatherAPI."""
+    if WEATHERAPI_KEY:
         try:
-            url = f"http://api.openweathermap.org/data/2.5/weather?q={location_query}&appid={OPENWEATHER_API_KEY}&units=metric"
+            url = f"http://api.weatherapi.com/v1/current.json?key={WEATHERAPI_KEY}&q={location_query}"
             res = requests.get(url, timeout=5).json()
-            if res.get("cod") == 200:
-                temp = res["main"]["temp"]
-                desc = res["weather"][0]["description"]
-                city = res["name"]
-                country = res["sys"]["country"]
-                return f"Live weather for {city}, {country}: {temp}°C, {desc}."
+            if "current" in res:
+                temp_c = res["current"]["temp_c"]
+                condition = res["current"]["condition"]["text"]
+                city = res["location"]["name"]
+                country = res["location"]["country"]
+                return f"Live weather for {city}, {country}: {temp_c}°C, {condition}."
         except Exception:
             pass
 
-    # Fallback to no-key live weather provider
+    # Fallback endpoint if API key is missing
     try:
         url = f"https://wttr.in/{location_query}?format=3"
         res = requests.get(url, timeout=5)
@@ -65,14 +65,13 @@ def read_root():
 
 @app.post("/title")
 def generate_title(request: TitleRequest):
-    """Generates a short 3-5 word chat title like ChatGPT/Claude."""
     if not groq_client:
         return {"title": "New Chat"}
     try:
         completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[
-                {"role": "system", "content": "Generate a concise 3 to 5 word title for this prompt. Return ONLY the title text, no quotes or labels."},
+                {"role": "system", "content": "Generate a short 3 to 5 word title for this prompt. Return plain text only with no quotes."},
                 {"role": "user", "content": request.prompt}
             ],
             temperature=0.5,
@@ -87,20 +86,18 @@ def chat(request: QueryRequest):
     if not groq_client:
         raise HTTPException(
             status_code=500, 
-            detail="GROQ_API_KEY missing. Ensure it is configured in your environment."
+            detail="GROQ_API_KEY missing. Please configure environment variables in Vercel."
         )
     
     try:
         context_data = []
 
-        # Weather Detection & Fetching
         weather_keywords = ["weather", "temperature", "forecast", "climate", "rain", "sunny", "hot", "cold"]
         if any(keyword in request.prompt.lower() for keyword in weather_keywords):
             weather_info = get_live_weather(request.prompt)
             if weather_info:
                 context_data.append(weather_info)
 
-        # Web Search Context
         if tavily_client:
             try:
                 search_results = tavily_client.search(query=request.prompt, search_depth="basic")
@@ -111,10 +108,14 @@ def chat(request: QueryRequest):
             except Exception:
                 pass
 
-        system_instruction = "You are ARCH AI, a helpful, intelligent assistant with access to real-time weather and web data."
+        system_instruction = (
+            "You are ARCH AI, an intelligent AI assistant. "
+            "Do NOT output function calls, JSON payloads, or commands such as web.run. Respond exclusively using natural text or Markdown."
+        )
+        
         full_prompt = request.prompt
         if context_data:
-            full_prompt = f"Real-time Context:\n" + "\n".join(context_data) + f"\n\nUser Question: {request.prompt}"
+            full_prompt = "Real-time Context:\n" + "\n".join(context_data) + f"\n\nUser Question: {request.prompt}"
 
         completion = groq_client.chat.completions.create(
             model="openai/gpt-oss-120b",
@@ -123,7 +124,7 @@ def chat(request: QueryRequest):
                 {"role": "user", "content": full_prompt}
             ],
             temperature=0.7,
-            max_tokens=1024,
+            max_tokens=10`24,
         )
 
         return {

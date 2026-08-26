@@ -40,16 +40,16 @@ class TitleRequest(BaseModel):
     prompt: str
 
 def extract_location(user_prompt: str) -> str:
-    """Extracts only the location name from the user prompt."""
+    """Extracts strictly the city/location name from the prompt."""
     if not groq_client:
         return "Abu Dhabi"
     try:
         completion = groq_client.chat.completions.create(
-            model="lopenai/gpt-oss-120b",
+            model="openai/gpt-oss-120b",
             messages=[
                 {
                     "role": "system",
-                    "content": "Extract ONLY the location or city name mentioned in the prompt. Return plain text only. If no location is mentioned, return 'Abu Dhabi'."
+                    "content": "Extract ONLY the location or city name mentioned in the prompt. Return plain text only. If no location is mentioned, default to 'Abu Dhabi'."
                 },
                 {"role": "user", "content": user_prompt}
             ],
@@ -76,15 +76,16 @@ def get_live_weather(raw_prompt: str) -> str:
                 condition = res["current"]["condition"]["text"]
                 city = res["location"]["name"]
                 country = res["location"]["country"]
-                return f"[LIVE DATA] Real-time weather for {city}, {country}: Actual Temp: {temp_c}°C, Feels Like: {feels_c}°C, Condition: {condition}."
+                return f"[LIVE WEATHER API DATA] Real-time weather for {city}, {country}: Actual Temperature: {temp_c}°C, Feels Like: {feels_c}°C, Condition: {condition}."
         except Exception as e:
             print(f"WeatherAPI Connection Error: {e}")
 
+    # Public fallback
     try:
         url = f"https://wttr.in/{clean_location}?format=3"
         res = requests.get(url, timeout=5)
         if res.status_code == 200 and "Unknown" not in res.text:
-            return f"[FALLBACK DATA] Weather context: {res.text.strip()}"
+            return f"[LIVE WEATHER FALLBACK] Real-time weather context: {res.text.strip()}"
     except Exception:
         pass
 
@@ -125,9 +126,10 @@ def chat(request: QueryRequest):
 
         weather_keywords = [
             "weather", "temperature", "forecast", "climate", "rain", 
-            "sunny", "hot", "cold", "degree", "temp", "rn", "now", "outside"
+            "sunny", "hot", "cold", "degree", "temp", "rn", "now", "outside", "today"
         ]
         
+        # Always trigger weather lookup if keywords are detected
         if any(keyword in request.prompt.lower() for keyword in weather_keywords):
             weather_info = get_live_weather(request.prompt)
             if weather_info:
@@ -145,13 +147,12 @@ def chat(request: QueryRequest):
 
         system_instruction = (
             "You are ARCH AI, an intelligent AI assistant. "
-            "You MUST use the real-time context provided to answer questions. "
-            "Respond using simple text or Markdown."
+            "STRICT INSTRUCTION FOR WEATHER: If real-time weather context is provided, you MUST use the exact numbers provided in the context (Actual Temp, Feels Like, Condition). "
+            "NEVER guess, estimate, or modify temperature figures. State the exact figures given."
         )
         
         messages = [{"role": "system", "content": system_instruction}]
         
-        # Append conversation history
         if request.history:
             for msg in request.history:
                 messages.append({"role": msg.role, "content": msg.content})
@@ -165,7 +166,7 @@ def chat(request: QueryRequest):
         completion = groq_client.chat.completions.create(
             model="openai/gpt-oss-120b",
             messages=messages,
-            temperature=0.5,
+            temperature=0.2, # Lower temperature forces strictly accurate responses
             max_tokens=1024,
         )
 

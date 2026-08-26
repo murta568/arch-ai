@@ -33,18 +33,17 @@ class Message(BaseModel):
 
 class QueryRequest(BaseModel):
     prompt: str
+    username: Optional[str] = "User"
     history: Optional[List[Message]] = []
 
 class TitleRequest(BaseModel):
     prompt: str
 
 def get_accurate_weather(raw_prompt: str) -> str:
-    """Uses Geocoding + Open-Meteo for high-accuracy real-time weather (No API key needed)."""
+    """Uses Geocoding + Open-Meteo for high-accuracy real-time weather."""
     try:
-        # 1. Geocode location string to lat/long
-        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name=Abu%20Dhabi&count=1&language=en&format=json"
+        geo_url = "https://geocoding-api.open-meteo.com/v1/search?name=Abu%20Dhabi&count=1&language=en&format=json"
         
-        # Extract specific city if present in prompt
         if "dubai" in raw_prompt.lower():
             geo_url = "https://geocoding-api.open-meteo.com/v1/search?name=Dubai&count=1&language=en&format=json"
         elif "sharjah" in raw_prompt.lower():
@@ -58,7 +57,6 @@ def get_accurate_weather(raw_prompt: str) -> str:
             city = geo_res["results"][0]["name"]
             country = geo_res["results"][0].get("country", "")
 
-            # 2. Query Open-Meteo Current Weather
             weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code&timezone=auto"
             w_res = requests.get(weather_url, timeout=5).json()
 
@@ -124,8 +122,11 @@ def chat(request: QueryRequest):
             except Exception:
                 pass
 
+        user_name = request.username if request.username else "User"
+
         system_instruction = (
-            "You are ARCH AI, an intelligent AI assistant. "
+            f"You are ARCH AI, an intelligent AI assistant. "
+            f"The user's name is '{user_name}'. ALWAYS remember their name and address them by name when asked or appropriate. "
             "STRICT WEATHER INSTRUCTION: Use ONLY the exact numbers provided in [LIVE ACCURATE DATA]. "
             "Do NOT hallucinate or guess temperatures. State the exact actual and feels-like readings provided."
         )

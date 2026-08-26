@@ -48,7 +48,6 @@ def get_live_weather(location_query: str) -> str:
         except Exception:
             pass
 
-    # Fallback endpoint if API key is missing
     try:
         url = f"https://wttr.in/{location_query}?format=3"
         res = requests.get(url, timeout=5)
@@ -124,7 +123,7 @@ def chat(request: QueryRequest):
                 {"role": "user", "content": full_prompt}
             ],
             temperature=0.7,
-            max_tokens=10`24,
+            max_tokens=1024,
         )
 
         return {

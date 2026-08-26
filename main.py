@@ -43,43 +43,46 @@ def extract_location(user_prompt: str) -> str:
             messages=[
                 {
                     "role": "system",
-                    "content": "Extract ONLY the location/city name mentioned in the user prompt. Return strictly the location name, nothing else. If no clear location is found, return empty text."
+                    "content": "Extract ONLY the location or city name mentioned in the prompt. Return plain text only. If no location is mentioned, return 'Abu Dhabi'."
                 },
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.1,
             max_tokens=15,
         )
-        return completion.choices[0].message.content.strip()
+        extracted = completion.choices[0].message.content.strip()
+        return extracted if extracted else "Abu Dhabi"
     except Exception:
-        return user_prompt
+        return "Abu Dhabi"
 
 def get_live_weather(raw_prompt: str) -> str:
-    """Fetches real-time weather globally via WeatherAPI using clean location names."""
-    location_query = extract_location(raw_prompt)
-    if not location_query:
-        location_query = raw_prompt
-
+    """Forces an explicit live WeatherAPI call using extracted location."""
+    clean_location = extract_location(raw_prompt)
+    
+    # Priority 1: WeatherAPI Call
     if WEATHERAPI_KEY:
         try:
-            url = f"http://api.weatherapi.com/v1/current.json?key={WEATHERAPI_KEY}&q={location_query}"
+            url = f"http://api.weatherapi.com/v1/current.json?key={WEATHERAPI_KEY.strip()}&q={clean_location}"
             res = requests.get(url, timeout=5).json()
+            
             if "current" in res:
                 temp_c = res["current"]["temp_c"]
                 feels_c = res["current"].get("feelslike_c", temp_c)
                 condition = res["current"]["condition"]["text"]
                 city = res["location"]["name"]
                 country = res["location"]["country"]
-                return f"Live weather data for {city}, {country}: Actual Temp: {temp_c}°C, Feels Like: {feels_c}°C, Condition: {condition}."
-        except Exception:
-            pass
+                return f"[LIVE DATA] Real-time weather for {city}, {country}: Actual Temp: {temp_c}°C, Feels Like: {feels_c}°C, Condition: {condition}."
+            elif "error" in res:
+                print(f"WeatherAPI Error: {res['error'].get('message')}")
+        except Exception as e:
+            print(f"WeatherAPI Connection Error: {e}")
 
-    # Fallback to public endpoint
+    # Priority 2: wttr.in fallback if key is missing/failed
     try:
-        url = f"https://wttr.in/{location_query}?format=3"
+        url = f"https://wttr.in/{clean_location}?format=3"
         res = requests.get(url, timeout=5)
         if res.status_code == 200 and "Unknown" not in res.text:
-            return f"Live weather context: {res.text.strip()}"
+            return f"[FALLBACK DATA] Weather context: {res.text.strip()}"
     except Exception:
         pass
 
@@ -118,7 +121,13 @@ def chat(request: QueryRequest):
     try:
         context_data = []
 
-        weather_keywords = ["weather", "temperature", "forecast", "climate", "rain", "sunny", "hot", "cold", "degree", "temp"]
+        # Keywords to force live weather search
+        weather_keywords = [
+            "weather", "temperature", "forecast", "climate", "rain", 
+            "sunny", "hot", "cold", "degree", "temp", "rn", "now", "outside"
+        ]
+        
+        # Check if user prompt is asking about weather/temperature
         if any(keyword in request.prompt.lower() for keyword in weather_keywords):
             weather_info = get_live_weather(request.prompt)
             if weather_info:
@@ -136,12 +145,13 @@ def chat(request: QueryRequest):
 
         system_instruction = (
             "You are ARCH AI, an intelligent AI assistant. "
-            "Do NOT output function calls, JSON payloads, or commands such as web.run. Respond exclusively using natural text or Markdown."
+            "You MUST use the real-time context provided to answer weather questions. "
+            "Do NOT output function calls, JSON payloads, or code snippets. Respond using simple text."
         )
         
         full_prompt = request.prompt
         if context_data:
-            full_prompt = "Real-time Context:\n" + "\n".join(context_data) + f"\n\nUser Question: {request.prompt}"
+            full_prompt = "Real-time Context Data:\n" + "\n".join(context_data) + f"\n\nUser Question: {request.prompt}"
 
         completion = groq_client.chat.completions.create(
             model="openai/gpt-oss-120b",
@@ -149,7 +159,7 @@ def chat(request: QueryRequest):
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": full_prompt}
             ],
-            temperature=0.7,
+            temperature=0.5,
             max_tokens=1024,
         )
 

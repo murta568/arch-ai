@@ -7,13 +7,14 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     :root {
-      --bg-color: #121212;
-      --card-bg: #1e1e1e;
-      --user-msg: #2b2b36;
-      --ai-msg: #1e1e1e;
-      --text-color: #e0e0e0;
-      --accent-color: #4f46e5;
-      --accent-hover: #4338ca;
+      --bg-color: #000000;
+      --card-bg: #212121;
+      --sidebar-bg: #171717;
+      --user-msg: #2f2f2f;
+      --ai-msg: #212121;
+      --text-color: #ffffff;
+      --accent-color: #3b82f6;
+      --border-color: #2f2f2f;
     }
 
     * {
@@ -27,24 +28,231 @@
       background-color: var(--bg-color);
       color: var(--text-color);
       display: flex;
-      flex-direction: column;
       height: 100vh;
       overflow: hidden;
     }
 
-    header {
-      padding: 1rem 2rem;
-      background-color: var(--card-bg);
-      border-bottom: 1px solid #333;
+    /* Name Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .modal {
+      background: var(--card-bg);
+      padding: 2rem;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      width: 90%;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .modal h2 {
+      margin-bottom: 1rem;
+      font-size: 1.25rem;
+    }
+
+    .modal input {
+      width: 100%;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: #000;
+      color: #fff;
+      outline: none;
+    }
+
+    .modal button {
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--accent-color);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 260px;
+      background-color: var(--sidebar-bg);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      transition: margin-left 0.3s ease;
+      z-index: 10;
+    }
+
+    .sidebar.closed {
+      margin-left: -260px;
+    }
+
+    .sidebar-header {
+      padding: 1rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      border-bottom: 1px solid var(--border-color);
     }
 
-    header h1 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      letter-spacing: 1px;
+    .new-chat-btn {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: #fff;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      text-align: left;
+    }
+
+    .chat-history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.6rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #fff;
+      font-size: 0.9rem;
+      position: relative;
+    }
+
+    .history-item:hover {
+      background: #2a2a2a;
+    }
+
+    .history-item.active {
+      background: #2f2f2f;
+    }
+
+    .history-item.pinned::before {
+      content: "📌 ";
+      font-size: 0.8rem;
+    }
+
+    .dots-menu {
+      background: none;
+      border: none;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 1.1rem;
+      padding: 0 0.3rem;
+    }
+
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 100%;
+      background: #2a2a2a;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      z-index: 100;
+      min-width: 120px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+
+    .dropdown-menu button {
+      display: block;
+      width: 100%;
+      padding: 0.5rem 0.8rem;
+      background: none;
+      border: none;
+      color: #fff;
+      text-align: left;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .dropdown-menu button:hover {
+      background: #3a3a3a;
+    }
+
+    /* Sidebar Footer User Info */
+    .sidebar-footer {
+      padding: 1rem;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .avatar-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background-color: var(--accent-color);
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: bold;
+      font-size: 1.1rem;
+    }
+
+    .user-name-text {
+      font-size: 0.95rem;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Main Content */
+    .main-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    top-bar {
+      display: flex;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      background-color: var(--bg-color);
+      gap: 1rem;
+    }
+
+    .sidebar-toggle-btn {
+      background: none;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center;
+    }
+
+    .app-logo {
+      height: 32px;
+      object-fit: contain;
+    }
+
+    .top-bar-title {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #888;
+      margin-left: auto;
     }
 
     .chat-container {
@@ -59,6 +267,14 @@
       margin: 0 auto;
     }
 
+    .welcome-header {
+      text-align: center;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
+      color: #fff;
+    }
+
     .message {
       display: flex;
       flex-direction: column;
@@ -68,6 +284,7 @@
       line-height: 1.5;
       font-size: 0.95rem;
       word-wrap: break-word;
+      color: #fff;
     }
 
     .message.user {
@@ -79,24 +296,16 @@
     .message.assistant {
       align-self: flex-start;
       background-color: var(--ai-msg);
-      border: 1px solid #333;
+      border: 1px solid var(--border-color);
       border-bottom-left-radius: 2px;
-    }
-
-    .message p {
-      margin-bottom: 0.5rem;
-    }
-
-    .message p:last-child {
-      margin-bottom: 0;
     }
 
     .input-area {
       padding: 1rem 1.5rem;
-      background-color: var(--card-bg);
-      border-top: 1px solid #333;
+      background-color: var(--bg-color);
       display: flex;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
     }
 
     .input-container {
@@ -104,86 +313,139 @@
       width: 100%;
       max-width: 800px;
       gap: 0.5rem;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.5rem;
     }
 
     input[type="text"] {
       flex: 1;
-      padding: 0.75rem 1rem;
-      border-radius: 8px;
-      border: 1px solid #444;
-      background-color: #121212;
+      padding: 0.75rem;
+      border: none;
+      background: transparent;
       color: #fff;
       font-size: 0.95rem;
       outline: none;
     }
 
-    input[type="text"]:focus {
-      border-color: var(--accent-color);
-    }
-
-    button {
-      padding: 0.75rem 1.25rem;
+    .send-btn {
+      padding: 0.5rem 1rem;
       border: none;
       border-radius: 8px;
       background-color: var(--accent-color);
       color: white;
       font-weight: 600;
       cursor: pointer;
-      transition: background-color 0.2s;
     }
 
-    button:hover {
-      background-color: var(--accent-hover);
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+    .disclaimer-text {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 0.5rem;
+      text-align: center;
     }
   </style>
 </head>
 <body>
 
-  <header>
-    <h1 id="chat-title">ARCH AI</h1>
-    <button onclick="startNewChat()">New Chat</button>
-  </header>
+  <!-- Name Modal -->
+  <div class="modal-overlay" id="nameModal">
+    <div class="modal">
+      <h2>Enter Your Username</h2>
+      <input type="text" id="usernameInput" placeholder="Your Name" onkeydown="if(event.key==='Enter') saveUsername()" />
+      <button onclick="saveUsername()">Continue</button>
+    </div>
+  </div>
 
-  <div class="chat-container" id="chat-container"></div>
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <button class="new-chat-btn" onclick="startNewChat()">+ New Chat</button>
+    </div>
+    <div class="chat-history-list" id="chatHistoryList"></div>
+    <div class="sidebar-footer">
+      <div class="avatar-circle" id="userAvatar">U</div>
+      <div class="user-name-text" id="userNameDisplay">User</div>
+    </div>
+  </div>
 
-  <div class="input-area">
-    <div class="input-container">
-      <input type="text" id="user-input" placeholder="Type your message..." onkeydown="handleKeyPress(event)" />
-      <button id="send-btn" onclick="sendMessage()">Send</button>
+  <!-- Main View -->
+  <div class="main-wrapper">
+    <top-bar>
+      <button class="sidebar-toggle-btn" onclick="toggleSidebar()">
+        <!-- Two Parallel Bar Icon -->
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="4" y1="8" x2="20" y2="8"></line>
+          <line x1="4" y1="16" x2="20" y2="16"></line>
+        </svg>
+      </button>
+      <img src="https://i.ibb.co/vz4D7L9/arch-ai-logo.png" alt="ARCH-AI Logo" class="app-logo" onerror="this.style.display='none'" />
+      <div class="top-bar-title" id="chatTitle">ARCH-AI</div>
+    </top-bar>
+
+    <div class="chat-container" id="chatContainer">
+      <div class="welcome-header">Ready when you are.</div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-container">
+        <input type="text" id="userInput" placeholder="Ask ARCH-AI..." onkeydown="handleKeyPress(event)" />
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+      </div>
+      <div class="disclaimer-text">ARCH-AI isn’t human. It can make mistakes, so double-check it.</div>
     </div>
   </div>
 
   <script>
-    // Maintains state across multiple messages
     let chatHistory = [];
-    let isFirstMessage = true;
+    let savedChats = [];
+    let currentChatId = null;
+    let userName = "";
+
+    window.onload = () => {
+      const storedName = localStorage.getItem("arch_username");
+      if (storedName) {
+        setUserData(storedName);
+        document.getElementById("nameModal").style.display = "none";
+      }
+    };
+
+    function saveUsername() {
+      const input = document.getElementById("usernameInput").value.trim();
+      if (!input) return;
+      localStorage.setItem("arch_username", input);
+      setUserData(input);
+      document.getElementById("nameModal").style.display = "none";
+    }
+
+    function setUserData(name) {
+      userName = name;
+      document.getElementById("userNameDisplay").innerText = name;
+      document.getElementById("userAvatar").innerText = name.charAt(0).toUpperCase();
+    }
+
+    function toggleSidebar() {
+      document.getElementById("sidebar").classList.toggle("closed");
+    }
 
     async function sendMessage() {
-      const inputEl = document.getElementById("user-input");
-      const sendBtn = document.getElementById("send-btn");
+      const inputEl = document.getElementById("userInput");
+      const sendBtn = document.getElementById("sendBtn");
       const prompt = inputEl.value.trim();
 
       if (!prompt) return;
 
-      // Render User Message
+      if (!currentChatId) {
+        currentChatId = Date.now().toString();
+      }
+
       appendMessage("user", prompt);
       inputEl.value = "";
       inputEl.disabled = true;
       sendBtn.disabled = true;
 
-      // Handle Title Generation on initial prompt
-      if (isFirstMessage) {
-        generateTitle(prompt);
-        isFirstMessage = false;
-      }
-
-      // Render Placeholder Assistant Message
-      const assistantMessageId = appendMessage("assistant", "Thinking...");
+      const assistantId = appendMessage("assistant", "Thinking...");
 
       try {
         const response = await fetch("/chat", {
@@ -191,25 +453,27 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: prompt,
-            history: chatHistory // Sends entire preceding context array
+            history: chatHistory
           })
         });
 
         const data = await response.json();
 
         if (response.ok && data.response) {
-          // Update AI Message Container with Markdown
-          const assistantMsgEl = document.getElementById(assistantMessageId);
-          assistantMsgEl.innerHTML = marked.parse(data.response);
+          document.getElementById(assistantId).innerHTML = marked.parse(data.response);
 
-          // Append completed turn to global history state
           chatHistory.push({ role: "user", content: prompt });
           chatHistory.push({ role: "assistant", content: data.response });
+
+          // Generate 3-to-4 word title summary if new conversation
+          if (chatHistory.length === 2) {
+            generateSummaryTitle(prompt);
+          }
         } else {
-          updateMessage(assistantMessageId, "Error: " + (data.detail || "Failed to generate response."));
+          document.getElementById(assistantId).innerText = "Error processing request.";
         }
       } catch (err) {
-        updateMessage(assistantMessageId, "Error connecting to backend server.");
+        document.getElementById(assistantId).innerText = "Connection error.";
       } finally {
         inputEl.disabled = false;
         sendBtn.disabled = false;
@@ -217,7 +481,7 @@
       }
     }
 
-    async function generateTitle(prompt) {
+    async function generateSummaryTitle(prompt) {
       try {
         const res = await fetch("/title", {
           method: "POST",
@@ -225,16 +489,89 @@
           body: JSON.stringify({ prompt: prompt })
         });
         const data = await res.json();
-        if (data.title) {
-          document.getElementById("chat-title").innerText = data.title;
-        }
+        const title = data.title || prompt.substring(0, 20);
+        
+        document.getElementById("chatTitle").innerText = title;
+        addOrUpdateHistoryItem(currentChatId, title);
       } catch (e) {
-        // Keep default header on failure
+        addOrUpdateHistoryItem(currentChatId, prompt.substring(0, 20));
       }
     }
 
+    function addOrUpdateHistoryItem(id, title) {
+      let item = savedChats.find(c => c.id === id);
+      if (!item) {
+        item = { id: id, title: title, pinned: false };
+        savedChats.push(item);
+      } else {
+        item.title = title;
+      }
+      renderSidebarHistory();
+    }
+
+    function renderSidebarHistory() {
+      const listEl = document.getElementById("chatHistoryList");
+      listEl.innerHTML = "";
+
+      // Sorted: Pinned items first
+      const sorted = [...savedChats].sort((a, b) => b.pinned - a.pinned);
+
+      sorted.forEach(chat => {
+        const div = document.createElement("div");
+        div.className = `history-item ${chat.id === currentChatId ? 'active' : ''} ${chat.pinned ? 'pinned' : ''}`;
+        
+        div.innerHTML = `
+          <span onclick="loadChat('${chat.id}')" style="flex:1; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(chat.title)}</span>
+          <button class="dots-menu" onclick="toggleDropdown(event, '${chat.id}')">⋮</button>
+          <div class="dropdown-menu" id="dropdown-${chat.id}">
+            <button onclick="pinChat('${chat.id}')">${chat.pinned ? 'Unpin Chat' : 'Pin Chat'}</button>
+            <button onclick="deleteChat('${chat.id}')">Delete Chat</button>
+          </div>
+        `;
+        listEl.appendChild(div);
+      });
+    }
+
+    function toggleDropdown(e, id) {
+      e.stopPropagation();
+      document.querySelectorAll('.dropdown-menu').forEach(el => el.style.display = 'none');
+      const dropdown = document.getElementById(`dropdown-${id}`);
+      if (dropdown) dropdown.style.display = 'block';
+    }
+
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.dropdown-menu').forEach(el => el.style.display = 'none');
+    });
+
+    function pinChat(id) {
+      const chat = savedChats.find(c => c.id === id);
+      if (chat) {
+        chat.pinned = !chat.pinned;
+        renderSidebarHistory();
+      }
+    }
+
+    function deleteChat(id) {
+      savedChats = savedChats.filter(c => c.id !== id);
+      if (currentChatId === id) {
+        startNewChat();
+      } else {
+        renderSidebarHistory();
+      }
+    }
+
+    function loadChat(id) {
+      currentChatId = id;
+      renderSidebarHistory();
+    }
+
     function appendMessage(role, content) {
-      const container = document.getElementById("chat-container");
+      const container = document.getElementById("chatContainer");
+      
+      // Clear initial welcome message if present
+      const welcome = container.querySelector('.welcome-header');
+      if (welcome) welcome.remove();
+
       const msgDiv = document.createElement("div");
       const msgId = "msg-" + Date.now();
 
@@ -247,24 +584,16 @@
       return msgId;
     }
 
-    function updateMessage(id, text) {
-      const el = document.getElementById(id);
-      if (el) {
-        el.innerText = text;
-      }
-    }
-
     function handleKeyPress(e) {
-      if (e.key === "Enter") {
-        sendMessage();
-      }
+      if (e.key === "Enter") sendMessage();
     }
 
     function startNewChat() {
       chatHistory = [];
-      isFirstMessage = true;
-      document.getElementById("chat-container").innerHTML = "";
-      document.getElementById("chat-title").innerText = "ARCH AI";
+      currentChatId = null;
+      document.getElementById("chatContainer").innerHTML = '<div class="welcome-header">Ready when you are.</div>';
+      document.getElementById("chatTitle").innerText = "ARCH-AI";
+      renderSidebarHistory();
     }
 
     function escapeHtml(text) {

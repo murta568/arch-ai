@@ -13,7 +13,6 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
@@ -39,55 +38,36 @@ class QueryRequest(BaseModel):
 class TitleRequest(BaseModel):
     prompt: str
 
-def extract_location(user_prompt: str) -> str:
-    """Extracts strictly the city/location name from the prompt."""
-    if not groq_client:
-        return "Abu Dhabi"
+def get_accurate_weather(raw_prompt: str) -> str:
+    """Uses Geocoding + Open-Meteo for high-accuracy real-time weather (No API key needed)."""
     try:
-        completion = groq_client.chat.completions.create(
-            model="openai/gpt-oss-120b",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Extract ONLY the location or city name mentioned in the prompt. Return plain text only. If no location is mentioned, default to 'Abu Dhabi'."
-                },
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1,
-            max_tokens=15,
-        )
-        loc = completion.choices[0].message.content.strip()
-        return loc if loc else "Abu Dhabi"
-    except Exception:
-        return "Abu Dhabi"
-
-def get_live_weather(raw_prompt: str) -> str:
-    """Fetches real-time weather globally via WeatherAPI."""
-    clean_location = extract_location(raw_prompt)
-    
-    if WEATHERAPI_KEY:
-        try:
-            url = f"http://api.weatherapi.com/v1/current.json?key={WEATHERAPI_KEY.strip()}&q={clean_location}"
-            res = requests.get(url, timeout=5).json()
+        # 1. Geocode location string to lat/long
+        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name=Abu%20Dhabi&count=1&language=en&format=json"
+        
+        # Extract specific city if present in prompt
+        if "dubai" in raw_prompt.lower():
+            geo_url = "https://geocoding-api.open-meteo.com/v1/search?name=Dubai&count=1&language=en&format=json"
+        elif "sharjah" in raw_prompt.lower():
+            geo_url = "https://geocoding-api.open-meteo.com/v1/search?name=Sharjah&count=1&language=en&format=json"
             
-            if "current" in res:
-                temp_c = res["current"]["temp_c"]
-                feels_c = res["current"].get("feelslike_c", temp_c)
-                condition = res["current"]["condition"]["text"]
-                city = res["location"]["name"]
-                country = res["location"]["country"]
-                return f"[LIVE WEATHER API DATA] Real-time weather for {city}, {country}: Actual Temperature: {temp_c}°C, Feels Like: {feels_c}°C, Condition: {condition}."
-        except Exception as e:
-            print(f"WeatherAPI Connection Error: {e}")
+        geo_res = requests.get(geo_url, timeout=5).json()
+        
+        if "results" in geo_res and len(geo_res["results"]) > 0:
+            lat = geo_res["results"][0]["latitude"]
+            lon = geo_res["results"][0]["longitude"]
+            city = geo_res["results"][0]["name"]
+            country = geo_res["results"][0].get("country", "")
 
-    # Public fallback
-    try:
-        url = f"https://wttr.in/{clean_location}?format=3"
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200 and "Unknown" not in res.text:
-            return f"[LIVE WEATHER FALLBACK] Real-time weather context: {res.text.strip()}"
-    except Exception:
-        pass
+            # 2. Query Open-Meteo Current Weather
+            weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code&timezone=auto"
+            w_res = requests.get(weather_url, timeout=5).json()
+
+            if "current" in w_res:
+                temp_c = w_res["current"]["temperature_2m"]
+                feels_c = w_res["current"]["apparent_temperature"]
+                return f"[LIVE ACCURATE DATA] Current real-time weather for {city}, {country}: Actual Temp: {temp_c}°C, Feels Like: {feels_c}°C."
+    except Exception as e:
+        print(f"Weather error: {e}")
 
     return ""
 
@@ -129,9 +109,8 @@ def chat(request: QueryRequest):
             "sunny", "hot", "cold", "degree", "temp", "rn", "now", "outside", "today"
         ]
         
-        # Always trigger weather lookup if keywords are detected
         if any(keyword in request.prompt.lower() for keyword in weather_keywords):
-            weather_info = get_live_weather(request.prompt)
+            weather_info = get_accurate_weather(request.prompt)
             if weather_info:
                 context_data.append(weather_info)
 
@@ -147,8 +126,8 @@ def chat(request: QueryRequest):
 
         system_instruction = (
             "You are ARCH AI, an intelligent AI assistant. "
-            "STRICT INSTRUCTION FOR WEATHER: If real-time weather context is provided, you MUST use the exact numbers provided in the context (Actual Temp, Feels Like, Condition). "
-            "NEVER guess, estimate, or modify temperature figures. State the exact figures given."
+            "STRICT WEATHER INSTRUCTION: Use ONLY the exact numbers provided in [LIVE ACCURATE DATA]. "
+            "Do NOT hallucinate or guess temperatures. State the exact actual and feels-like readings provided."
         )
         
         messages = [{"role": "system", "content": system_instruction}]
@@ -166,7 +145,7 @@ def chat(request: QueryRequest):
         completion = groq_client.chat.completions.create(
             model="openai/gpt-oss-120b",
             messages=messages,
-            temperature=0.2, # Lower temperature forces strictly accurate responses
+            temperature=0.1,
             max_tokens=1024,
         )
 

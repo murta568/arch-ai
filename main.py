@@ -85,12 +85,11 @@ def fetch_rest_sample_data() -> str:
     return ""
 
 # --- 3. SOAP API EXAMPLE (DataFlex NumberConversion) ---
-def call_soap_number_to_words(number: int = 100) -> str:
+def call_soap_number_to_words(number: int = 250) -> str:
     """SOAP API: Converts a number into words using WSDL XML web service"""
     try:
         wsdl_url = "https://www.dataaccess.com/webservicesserver/numberconversion.wso?WSDL"
         soap_client = SoapClient(wsdl=wsdl_url)
-        # Call SOAP operation: NumberToWords
         result = soap_client.service.NumberToWords(ubiNum=number)
         return f"[SOAP API DATA] Number {number} in words via SOAP Web Service: '{result.strip()}'."
     except Exception as e:
@@ -135,45 +134,47 @@ def chat(request: QueryRequest):
     
     try:
         context_data = []
-
         prompt_lower = request.prompt.lower()
 
         # Trigger Weather REST API
         weather_keywords = ["weather", "temperature", "forecast", "climate", "rain", "sunny", "hot", "cold", "temp", "today"]
-        if any(keyword in prompt_lower for keyword in weather_keywords):
+        is_weather_query = any(keyword in prompt_lower for keyword in weather_keywords)
+        if is_weather_query:
             weather_info = get_accurate_weather(request.prompt)
             if weather_info:
                 context_data.append(weather_info)
 
-        # Trigger General REST API Example
+        # Trigger Sample REST API
         if "rest" in prompt_lower or "sample data" in prompt_lower or "todo" in prompt_lower:
             rest_data = fetch_rest_sample_data()
             if rest_data:
                 context_data.append(rest_data)
 
-        # Trigger SOAP API Example
+        # Trigger SOAP API
         if "soap" in prompt_lower or "wsdl" in prompt_lower or "words" in prompt_lower:
             soap_data = call_soap_number_to_words(250)
             if soap_data:
                 context_data.append(soap_data)
 
-        # Trigger Tavily Web Search
-        if tavily_client and ("search" in prompt_lower or "news" in prompt_lower or "who is" in prompt_lower):
+        # AUTOMATIC TAVILY WEB SEARCH
+        # Searches the web for any query unless it's a specific internal command or brief greeting
+        skip_search = any(k in prompt_lower for k in ["hi", "hello", "hey"]) and len(prompt_lower.split()) < 3
+        if tavily_client and not skip_search:
             try:
                 search_results = tavily_client.search(query=request.prompt, search_depth="basic")
                 results = search_results.get("results", [])
                 tavily_text = "\n".join([r.get("content", "") for r in results[:2]])
                 if tavily_text:
                     context_data.append(f"Web Context:\n{tavily_text}")
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Tavily Search Error: {e}")
 
         user_name = request.username if request.username else "User"
 
         system_instruction = (
             f"You are ARCH AI, an intelligent AI assistant. "
             f"The user's name is '{user_name}'. ALWAYS remember their name and address them by name when asked or appropriate. "
-            "STRICT INSTRUCTION: Use any live REST or SOAP data provided in the context accurately."
+            "STRICT INSTRUCTION: Use any live REST, SOAP, or Web Context data provided to give precise, up-to-date responses."
         )
         
         messages = [{"role": "system", "content": system_instruction}]

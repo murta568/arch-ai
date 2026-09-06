@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from groq import Groq
 from tavily import TavilyClient
+from zeep import Client as SoapClient
 
 load_dotenv()
 
@@ -38,9 +39,11 @@ class QueryRequest(BaseModel):
 
 class TitleRequest(BaseModel):
     prompt: str
+    response_text: Optional[str] = ""
 
+# --- 1. WEATHER REST API FUNCTION ---
 def get_accurate_weather(raw_prompt: str) -> str:
-    """Uses Geocoding + Open-Meteo for high-accuracy real-time weather."""
+    """REST API: Open-Meteo Geocoding and Weather"""
     try:
         geo_url = "https://geocoding-api.open-meteo.com/v1/search?name=Abu%20Dhabi&count=1&language=en&format=json"
         
@@ -63,11 +66,36 @@ def get_accurate_weather(raw_prompt: str) -> str:
             if "current" in w_res:
                 temp_c = w_res["current"]["temperature_2m"]
                 feels_c = w_res["current"]["apparent_temperature"]
-                return f"[LIVE ACCURATE DATA] Current real-time weather for {city}, {country}: Actual Temp: {temp_c}°C, Feels Like: {feels_c}°C."
+                return f"[LIVE WEATHER REST DATA] Weather for {city}, {country}: Actual Temp: {temp_c}°C, Feels Like: {feels_c}°C."
     except Exception as e:
         print(f"Weather error: {e}")
 
     return ""
+
+# --- 2. REST API EXAMPLE (JSONPlaceholder) ---
+def fetch_rest_sample_data() -> str:
+    """REST API: Fetches sample data from JSONPlaceholder"""
+    try:
+        res = requests.get("https://jsonplaceholder.typicode.com/todos/1", timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            return f"[REST API DATA] Sample task fetched: Title: '{data.get('title')}', Completed: {data.get('completed')}."
+    except Exception as e:
+        print(f"REST API error: {e}")
+    return ""
+
+# --- 3. SOAP API EXAMPLE (DataFlex NumberConversion) ---
+def call_soap_number_to_words(number: int = 100) -> str:
+    """SOAP API: Converts a number into words using WSDL XML web service"""
+    try:
+        wsdl_url = "https://www.dataaccess.com/webservicesserver/numberconversion.wso?WSDL"
+        soap_client = SoapClient(wsdl=wsdl_url)
+        # Call SOAP operation: NumberToWords
+        result = soap_client.service.NumberToWords(ubiNum=number)
+        return f"[SOAP API DATA] Number {number} in words via SOAP Web Service: '{result.strip()}'."
+    except Exception as e:
+        print(f"SOAP API error: {e}")
+        return ""
 
 @app.get("/")
 def read_root():
@@ -78,18 +106,24 @@ def generate_title(request: TitleRequest):
     if not groq_client:
         return {"title": "New Chat"}
     try:
+        user_content = f"User asked: {request.prompt}\nAI answered: {request.response_text}"
+        
         completion = groq_client.chat.completions.create(
             model="openai/gpt-oss-120b",
             messages=[
-                {"role": "system", "content": "Generate a short 3 to 5 word title for this prompt. Return plain text only with no quotes."},
-                {"role": "user", "content": request.prompt}
+                {
+                    "role": "system", 
+                    "content": "Create a brief 2 to 4 word summary title for this conversation. Output ONLY the title text. Do not use quotes, punctuation, or extra words."
+                },
+                {"role": "user", "content": user_content}
             ],
-            temperature=0.5,
-            max_tokens=20,
+            temperature=0.3,
+            max_tokens=15,
         )
         return {"title": completion.choices[0].message.content.strip()}
-    except Exception:
-        return {"title": "New Chat"}
+    except Exception as e:
+        print(f"Title Error: {e}")
+        return {"title": request.prompt[:20]}
 
 @app.post("/chat")
 def chat(request: QueryRequest):
@@ -102,17 +136,29 @@ def chat(request: QueryRequest):
     try:
         context_data = []
 
-        weather_keywords = [
-            "weather", "temperature", "forecast", "climate", "rain", 
-            "sunny", "hot", "cold", "degree", "temp", "rn", "now", "outside", "today"
-        ]
-        
-        if any(keyword in request.prompt.lower() for keyword in weather_keywords):
+        prompt_lower = request.prompt.lower()
+
+        # Trigger Weather REST API
+        weather_keywords = ["weather", "temperature", "forecast", "climate", "rain", "sunny", "hot", "cold", "temp", "today"]
+        if any(keyword in prompt_lower for keyword in weather_keywords):
             weather_info = get_accurate_weather(request.prompt)
             if weather_info:
                 context_data.append(weather_info)
 
-        if tavily_client:
+        # Trigger General REST API Example
+        if "rest" in prompt_lower or "sample data" in prompt_lower or "todo" in prompt_lower:
+            rest_data = fetch_rest_sample_data()
+            if rest_data:
+                context_data.append(rest_data)
+
+        # Trigger SOAP API Example
+        if "soap" in prompt_lower or "wsdl" in prompt_lower or "words" in prompt_lower:
+            soap_data = call_soap_number_to_words(250)
+            if soap_data:
+                context_data.append(soap_data)
+
+        # Trigger Tavily Web Search
+        if tavily_client and ("search" in prompt_lower or "news" in prompt_lower or "who is" in prompt_lower):
             try:
                 search_results = tavily_client.search(query=request.prompt, search_depth="basic")
                 results = search_results.get("results", [])
@@ -127,8 +173,7 @@ def chat(request: QueryRequest):
         system_instruction = (
             f"You are ARCH AI, an intelligent AI assistant. "
             f"The user's name is '{user_name}'. ALWAYS remember their name and address them by name when asked or appropriate. "
-            "STRICT WEATHER INSTRUCTION: Use ONLY the exact numbers provided in [LIVE ACCURATE DATA]. "
-            "Do NOT hallucinate or guess temperatures. State the exact actual and feels-like readings provided."
+            "STRICT INSTRUCTION: Use any live REST or SOAP data provided in the context accurately."
         )
         
         messages = [{"role": "system", "content": system_instruction}]

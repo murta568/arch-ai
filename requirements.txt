@@ -3,5 +3,5 @@ uvicorn
 groq
 tavily-python
 python-dotenv
-pydantic
 requests
+zeep

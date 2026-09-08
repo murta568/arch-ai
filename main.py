@@ -42,11 +42,11 @@ async def root():
             .modal input { width: 100%; padding: 10px; background-color: #212121; border: 1px solid #424242; border-radius: 6px; color: #fff; font-size: 14px; outline: none; }
             .modal button { width: 100%; padding: 10px; background-color: #58a6ff; border: none; border-radius: 6px; color: #000; font-weight: 700; cursor: pointer; }
 
-            /* Bottom Right User Profile Badge */
+            /* Bottom Left User Profile Badge */
             #user-profile-badge {
                 position: fixed;
                 bottom: 20px;
-                right: 20px;
+                left: 20px;
                 background-color: #171717;
                 border: 1px solid #2f2f2f;
                 border-radius: 30px;
@@ -136,7 +136,7 @@ async def root():
             </div>
         </div>
 
-        <!-- Floating Bottom Right User Profile Badge -->
+        <!-- Floating Bottom Left User Profile Badge -->
         <div id="user-profile-badge">
             <div class="avatar-circle" id="user-avatar-initial">M</div>
             <span class="user-badge-name" id="user-badge-text">Murtajiz</span>

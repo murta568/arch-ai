@@ -118,7 +118,6 @@ async def root():
             .user { align-self: flex-end; background-color: #2f2f2f; color: #ececec; border-bottom-right-radius: 2px; }
             .bot { align-self: flex-start; background-color: #171717; color: #d1d5db; border: 1px solid #2f2f2f; border-bottom-left-radius: 2px; }
 
-            /* Formatting overrides for Markdown Elements inside chat bubbles */
             .msg p { margin-bottom: 8px; }
             .msg p:last-child { margin-bottom: 0; }
             .msg ul, .msg ol { margin-left: 20px; margin-bottom: 8px; }
@@ -312,8 +311,11 @@ async def root():
                     const div = document.createElement('div');
                     div.className = `msg ${m.role}`;
                     
-                    // Parse Markdown content into formatted HTML using marked
-                    div.innerHTML = typeof marked !== 'undefined' ? marked.parse(m.content) : m.content;
+                    if (typeof marked !== 'undefined') {
+                        div.innerHTML = marked.parse(m.content);
+                    } else {
+                        div.innerText = m.content;
+                    }
                     
                     chatbox.appendChild(div);
                 });
@@ -428,7 +430,7 @@ async def chat_endpoint(request: ChatRequest):
     if extra_context:
         web_context += f"\n{extra_context}"
 
-    # 3. System Prompt enforcing text-only response, strict context isolation, and user profile memory
+    # 3. System Prompt enforcing plain text format, context isolation, and user profile memory
     user_profile_info = ""
     if request.user_name:
         user_profile_info += f"User's Name: {request.user_name}\n"
@@ -443,9 +445,10 @@ async def chat_endpoint(request: ChatRequest):
         "2. The 'Context Information' provided below comes strictly from EXTERNAL live web searches. "
         "DO NOT assume or state that the user is the person or subject mentioned in the web search context.\n"
         "3. Address the user directly as a helpful peer. Answer their question using the facts in the context without assigning search result identities to the user.\n"
-        "4. Absolutely DO NOT output, print, or generate any URLs, hyperlinks, or website links in your response.\n"
-        "5. EXCEPTION: Include URLs/links ONLY if the user explicitly uses words like 'links', 'sources', 'urls', or 'websites' in their prompt.\n"
-        "6. Never state that you lack real-time data when context is provided."
+        "4. Do NOT use markdown syntax like double asterisks (**) for bold text or hash symbols (#) for headers. Output plain, clean text only.\n"
+        "5. Absolutely DO NOT output, print, or generate any URLs, hyperlinks, or website links in your response.\n"
+        "6. EXCEPTION: Include URLs/links ONLY if the user explicitly uses words like 'links', 'sources', 'urls', or 'websites' in their prompt.\n"
+        "7. Never state that you lack real-time data when context is provided."
     )
 
     # 4. Assemble Messages Array

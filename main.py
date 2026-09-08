@@ -1,6 +1,6 @@
 import os
 import requests
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -16,6 +16,8 @@ tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
 
 class ChatRequest(BaseModel):
     message: str
+    user_name: Optional[str] = None
+    user_age: Optional[str] = None
     history: List[Dict[str, Any]] = []
 
 
@@ -32,6 +34,13 @@ async def root():
         <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #212121; color: #ececec; display: flex; height: 100vh; overflow: hidden; }
+
+            /* Modal Overlay */
+            #modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+            .modal { background-color: #171717; border: 1px solid #30363d; border-radius: 12px; padding: 24px; width: 320px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+            .modal h3 { color: #58a6ff; text-align: center; }
+            .modal input { width: 100%; padding: 10px; background-color: #212121; border: 1px solid #424242; border-radius: 6px; color: #fff; font-size: 14px; outline: none; }
+            .modal button { width: 100%; padding: 10px; background-color: #58a6ff; border: none; border-radius: 6px; color: #000; font-weight: 700; cursor: pointer; }
 
             /* Sidebar styling */
             #sidebar { width: 260px; background-color: #171717; display: flex; flex-direction: column; transition: width 0.3s ease; border-right: 1px solid #2f2f2f; z-index: 10; }
@@ -71,14 +80,26 @@ async def root():
             .user { align-self: flex-end; background-color: #2f2f2f; color: #ececec; border-bottom-right-radius: 2px; }
             .bot { align-self: flex-start; background-color: #171717; color: #d1d5db; border: 1px solid #2f2f2f; border-bottom-left-radius: 2px; }
 
-            .input-area { padding: 16px; background-color: #212121; }
+            .input-area { padding: 12px 16px 16px 16px; background-color: #212121; display: flex; flex-direction: column; align-items: center; }
             .input-box { width: 100%; max-width: 800px; margin: 0 auto; display: flex; background-color: #2f2f2f; border: 1px solid #424242; border-radius: 12px; overflow: hidden; }
-            input { flex: 1; padding: 14px; background: transparent; border: none; color: #fff; font-size: 15px; outline: none; }
+            input.msg-input { flex: 1; padding: 14px; background: transparent; border: none; color: #fff; font-size: 15px; outline: none; }
             button.send-btn { padding: 0 20px; background-color: #58a6ff; border: none; color: #000; font-weight: 700; cursor: pointer; transition: background 0.2s; }
             button.send-btn:hover { background-color: #79b8ff; }
+            
+            .disclaimer-text { font-size: 12px; color: #8e8e8e; margin-top: 8px; text-align: center; }
         </style>
     </head>
     <body>
+        <!-- User Info Modal -->
+        <div id="modal-overlay">
+            <div class="modal">
+                <h3>Welcome to ARCH-AI</h3>
+                <input type="text" id="userNameInput" placeholder="Enter your Name">
+                <input type="number" id="userAgeInput" placeholder="Enter your Age">
+                <button onclick="saveUserInfo()">Start Chatting</button>
+            </div>
+        </div>
+
         <div id="sidebar">
             <div class="sidebar-header">
                 <h1>ARCH-AI</h1>
@@ -104,15 +125,43 @@ async def root():
 
             <div class="input-area">
                 <div class="input-box">
-                    <input type="text" id="userInput" placeholder="Ask ARCH-AI a question..." onkeydown="if(event.key==='Enter') sendMsg()">
+                    <input type="text" id="userInput" class="msg-input" placeholder="Ask ARCH-AI a question..." onkeydown="if(event.key==='Enter') sendMsg()">
                     <button class="send-btn" onclick="sendMsg()">Send</button>
                 </div>
+                <div class="disclaimer-text">ARCH-AI isn’t human. It can make mistakes, so double-check it.</div>
             </div>
         </div>
 
         <script>
             let chats = [];
             let activeChatId = null;
+            let userName = "";
+            let userAge = "";
+
+            // Check for saved user info or display modal
+            window.onload = function() {
+                const savedName = localStorage.getItem('arch_user_name');
+                const savedAge = localStorage.getItem('arch_user_age');
+                if (savedName && savedAge) {
+                    userName = savedName;
+                    userAge = savedAge;
+                    document.getElementById('modal-overlay').style.display = 'none';
+                }
+            };
+
+            function saveUserInfo() {
+                const nameVal = document.getElementById('userNameInput').value.trim();
+                const ageVal = document.getElementById('userAgeInput').value.trim();
+                if (!nameVal || !ageVal) {
+                    alert("Please enter both your name and age.");
+                    return;
+                }
+                userName = nameVal;
+                userAge = ageVal;
+                localStorage.setItem('arch_user_name', userName);
+                localStorage.setItem('arch_user_age', userAge);
+                document.getElementById('modal-overlay').style.display = 'none';
+            }
 
             function toggleSidebar() {
                 document.getElementById('sidebar').classList.toggle('collapsed');
@@ -171,6 +220,8 @@ async def root():
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
                             message: text,
+                            user_name: userName,
+                            user_age: userAge,
                             history: historyToSend 
                         })
                     });
@@ -311,19 +362,27 @@ async def chat_endpoint(request: ChatRequest):
     if extra_context:
         web_context += f"\n{extra_context}"
 
-    # 3. System Prompt enforcing text-only response and strict context isolation rules
+    # 3. System Prompt enforcing text-only response, strict context isolation, and user profile memory
+    user_profile_info = ""
+    if request.user_name:
+        user_profile_info += f"User's Name: {request.user_name}\n"
+    if request.user_age:
+        user_profile_info += f"User's Age: {request.user_age}\n"
+
     system_prompt = (
         "You are ARCH-AI, an intelligent, text-only assistant.\n\n"
+        f"USER PROFILE INFORMATION:\n{user_profile_info}\n"
         "STRICT CONTEXT & OUTPUT RULES:\n"
-        "1. The 'Context Information' provided below comes from EXTERNAL live web searches. "
+        "1. You KNOW the user's name and age from the profile above. Always accurately answer when asked about their name or age.\n"
+        "2. The 'Context Information' provided below comes strictly from EXTERNAL live web searches. "
         "DO NOT assume or state that the user is the person or subject mentioned in the web search context.\n"
-        "2. Address the user directly as a helpful peer. Answer their question using the facts in the context without assigning the identities found in search results to the user.\n"
-        "3. Absolutely DO NOT output, print, or generate any URLs, hyperlinks, or website links in your response.\n"
-        "4. EXCEPTION: Include URLs/links ONLY if the user explicitly uses words like 'links', 'sources', 'urls', or 'websites' in their prompt.\n"
-        "5. Never state that you lack real-time data when context is provided."
+        "3. Address the user directly as a helpful peer. Answer their question using the facts in the context without assigning search result identities to the user.\n"
+        "4. Absolutely DO NOT output, print, or generate any URLs, hyperlinks, or website links in your response.\n"
+        "5. EXCEPTION: Include URLs/links ONLY if the user explicitly uses words like 'links', 'sources', 'urls', or 'websites' in their prompt.\n"
+        "6. Never state that you lack real-time data when context is provided."
     )
 
-    # 4. Assemble Messages Array starting with System Prompt
+    # 4. Assemble Messages Array
     messages = [
         {"role": "system", "content": system_prompt}
     ]

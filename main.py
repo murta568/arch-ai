@@ -1,78 +1,70 @@
-@app.post("/chat")
-def chat(request: QueryRequest):
-    if not groq_client:
-        raise HTTPException(
-            status_code=500, 
-            detail="GROQ_API_KEY missing. Configure environment variables in Vercel settings."
-        )
-    
+import os
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from groq import Groq
+from tavily import TavilyClient
+
+app = FastAPI()
+
+# Initialize clients (Ensure API keys are set in your environment)
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
+
+class ChatRequest(BaseModel):
+    message: str
+
+def fetch_tavily_text_only(query: str) -> str:
+    """Queries Tavily and extracts raw text content while stripping out URLs."""
     try:
-        context_data = []
-        prompt_lower = request.prompt.lower()
-
-        # Trigger Weather REST API
-        weather_keywords = ["weather", "temperature", "forecast", "climate", "rain", "sunny", "hot", "cold", "temp", "today"]
-        if any(keyword in prompt_lower for keyword in weather_keywords):
-            weather_info = get_accurate_weather(request.prompt)
-            if weather_info:
-                context_data.append(weather_info)
-
-        # Trigger Sample REST API
-        if "rest" in prompt_lower or "sample data" in prompt_lower or "todo" in prompt_lower:
-            rest_data = fetch_rest_sample_data()
-            if rest_data:
-                context_data.append(rest_data)
-
-        # Trigger SOAP API
-        if "soap" in prompt_lower or "wsdl" in prompt_lower or "words" in prompt_lower:
-            soap_data = call_soap_number_to_words(250)
-            if soap_data:
-                context_data.append(soap_data)
-
-        # AUTOMATIC TAVILY WEB SEARCH
-        skip_search = any(k in prompt_lower for k in ["hi", "hello", "hey"]) and len(prompt_lower.split()) < 3
-        if tavily_client and not skip_search:
-            try:
-                search_results = tavily_client.search(query=request.prompt, search_depth="basic")
-                results = search_results.get("results", [])
-                tavily_text = "\n".join([r.get("content", "") for r in results[:3]])
-                if tavily_text:
-                    context_data.append(f"Web Context:\n{tavily_text}")
-            except Exception as e:
-                print(f"Tavily Search Error: {e}")
-
-        user_name = request.username if request.username else "User"
-
-        system_instruction = (
-            f"You are ARCH AI, an intelligent AI assistant. "
-            f"The user's name is '{user_name}'. ALWAYS remember their name and address them by name when asked or appropriate. "
-            "INSTRUCTION: Use the provided 'Real-time Context Data' to answer questions about live prices, scores, news, or weather. "
-            "Do NOT state that you lack a live market or sports feed if web context is present in the prompt."
-        )
+        search_response = tavily_client.search(query=query, max_results=3)
+        results = search_response.get("results", [])
         
-        messages = [{"role": "system", "content": system_instruction}]
+        # Extract only the text snippet, omitting 'url' fields completely
+        text_snippets = [item.get("content", "") for item in results if item.get("content")]
         
-        if request.history:
-            for msg in request.history:
-                messages.append({"role": msg.role, "content": msg.content})
+        return "\n\n".join(text_snippets)
+    except Exception as e:
+        print(f"Tavily Search Error: {e}")
+        return ""
 
-        current_prompt = request.prompt
-        if context_data:
-            current_prompt = "Real-time Context Data:\n" + "\n".join(context_data) + f"\n\nUser Question: {request.prompt}"
-
-        messages.append({"role": "user", "content": current_prompt})
-
-        completion = groq_client.chat.completions.create(
+@app.post("/chat")
+async def chat_endpoint(request: ChatRequest):
+    user_message = request.message.strip()
+    
+    # 1. Fetch live web context using Tavily
+    web_context = fetch_tavily_text_only(user_message)
+    
+    # 2. Strict system prompt preventing link insertion unless explicitly requested
+    system_prompt = (
+        "You are ARCH-AI, an intelligent assistant. "
+        "Use the provided Web Search Context to answer the user's question directly, accurately, and completely.\n\n"
+        "STRICT OUTPUT RULES:\n"
+        "1. Answer the query directly using the factual information from the context.\n"
+        "2. DO NOT output, print, or generate any URLs, hyperlinks, or website links in your response.\n"
+        "3. EXCEPTION: Include links ONLY if the user explicitly uses words like 'links', 'sources', 'urls', or 'websites' in their prompt.\n"
+        "4. Never state that you lack real-time or live data when context is provided above."
+    )
+    
+    # 3. Construct message payload
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ]
+    
+    if web_context:
+        messages.append({
+            "role": "system", 
+            "content": f"Web Search Context (Information Only):\n{web_context}"
+        })
+        
+    messages.append({"role": "user", "content": user_message})
+    
+    # 4. Generate response via Groq
+    try:
+        response = groq_client.chat.completions.create(
             model="openai/gpt-oss-120b",
             messages=messages,
-            temperature=0.1,
-            max_tokens=1024,
+            temperature=0.3
         )
-
-        return {
-            "status": "success",
-            "response": completion.choices[0].message.content
-        }
-
+        return {"response": response.choices[0].message.content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

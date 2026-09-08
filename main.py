@@ -1,5 +1,6 @@
 import os
 import requests
+from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -12,8 +13,10 @@ app = FastAPI(title="ARCH-AI Backend")
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
 
+
 class ChatRequest(BaseModel):
     message: str
+    history: List[Dict[str, Any]] = []  # Accepts previous chat history
 
 
 # --- ROOT ROUTE: ChatGPT-Style Interface ---
@@ -132,7 +135,7 @@ async def root():
 
                 const chatbox = document.getElementById('chatbox');
                 
-                // If starting a fresh chat session
+                // Create a new session if none is active
                 if (!activeChatId) {
                     activeChatId = Date.now();
                     const newChat = {
@@ -146,6 +149,13 @@ async def root():
                 }
 
                 const currentChat = chats.find(c => c.id === activeChatId);
+                
+                // Get memory history prior to appending current prompt
+                const historyToSend = currentChat.messages.map(m => ({
+                    role: m.role === 'bot' ? 'assistant' : 'user',
+                    content: m.content
+                }));
+
                 currentChat.messages.push({ role: 'user', content: text });
 
                 renderMessages();
@@ -162,7 +172,10 @@ async def root():
                     const res = await fetch('/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: text })
+                        body: JSON.stringify({ 
+                            message: text,
+                            history: historyToSend 
+                        })
                     });
                     const data = await res.json();
                     const botResponse = data.response || data.detail || 'Error receiving response.';
@@ -314,17 +327,24 @@ async def chat_endpoint(request: ChatRequest):
         "4. Never state that you lack real-time data when context is provided."
     )
 
-    # 4. Assemble Messages
+    # 4. Assemble Messages Array starting with System Prompt
     messages = [
         {"role": "system", "content": system_prompt}
     ]
 
+    # Inject conversation history into messages payload
+    for item in request.history:
+        if item.get("role") in ["user", "assistant"] and item.get("content"):
+            messages.append({"role": item["role"], "content": item["content"]})
+
+    # Attach live web context if present
     if web_context:
         messages.append({
             "role": "system", 
             "content": f"Context Information:\n{web_context}"
         })
 
+    # Append current user prompt
     messages.append({"role": "user", "content": user_message})
 
     # 5. Execute via Groq / Llama 3.3

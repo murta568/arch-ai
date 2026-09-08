@@ -42,6 +42,42 @@ async def root():
             .modal input { width: 100%; padding: 10px; background-color: #212121; border: 1px solid #424242; border-radius: 6px; color: #fff; font-size: 14px; outline: none; }
             .modal button { width: 100%; padding: 10px; background-color: #58a6ff; border: none; border-radius: 6px; color: #000; font-weight: 700; cursor: pointer; }
 
+            /* Bottom Right User Profile Badge */
+            #user-profile-badge {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background-color: #171717;
+                border: 1px solid #2f2f2f;
+                border-radius: 30px;
+                padding: 6px 14px 6px 8px;
+                display: none;
+                align-items: center;
+                gap: 10px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                z-index: 100;
+            }
+
+            .avatar-circle {
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                background-color: #58a6ff;
+                color: #000;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                text-transform: uppercase;
+            }
+
+            .user-badge-name {
+                font-size: 13px;
+                font-weight: 600;
+                color: #ececec;
+            }
+
             /* Sidebar styling */
             #sidebar { width: 260px; background-color: #171717; display: flex; flex-direction: column; transition: width 0.3s ease; border-right: 1px solid #2f2f2f; z-index: 10; }
             #sidebar.collapsed { width: 0; overflow: hidden; border-right: none; }
@@ -100,6 +136,12 @@ async def root():
             </div>
         </div>
 
+        <!-- Floating Bottom Right User Profile Badge -->
+        <div id="user-profile-badge">
+            <div class="avatar-circle" id="user-avatar-initial">M</div>
+            <span class="user-badge-name" id="user-badge-text">Murtajiz</span>
+        </div>
+
         <div id="sidebar">
             <div class="sidebar-header">
                 <h1>ARCH-AI</h1>
@@ -138,7 +180,6 @@ async def root():
             let userName = "";
             let userAge = "";
 
-            // Check for saved user info or display modal
             window.onload = function() {
                 const savedName = localStorage.getItem('arch_user_name');
                 const savedAge = localStorage.getItem('arch_user_age');
@@ -146,8 +187,19 @@ async def root():
                     userName = savedName;
                     userAge = savedAge;
                     document.getElementById('modal-overlay').style.display = 'none';
+                    updateUserBadge(userName);
                 }
             };
+
+            function updateUserBadge(name) {
+                const badge = document.getElementById('user-profile-badge');
+                const initialDiv = document.getElementById('user-avatar-initial');
+                const nameSpan = document.getElementById('user-badge-text');
+
+                initialDiv.innerText = name.charAt(0).toUpperCase();
+                nameSpan.innerText = name;
+                badge.style.display = 'flex';
+            }
 
             function saveUserInfo() {
                 const nameVal = document.getElementById('userNameInput').value.trim();
@@ -161,6 +213,7 @@ async def root():
                 localStorage.setItem('arch_user_name', userName);
                 localStorage.setItem('arch_user_age', userAge);
                 document.getElementById('modal-overlay').style.display = 'none';
+                updateUserBadge(userName);
             }
 
             function toggleSidebar() {

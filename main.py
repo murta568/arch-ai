@@ -31,6 +31,8 @@ async def root():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>ARCH-AI Interface</title>
+        <!-- Marked.js CDN to parse Markdown syntax into HTML -->
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #212121; color: #ececec; display: flex; height: 100vh; overflow: hidden; }
@@ -115,6 +117,14 @@ async def root():
             .msg { display: flex; flex-direction: column; max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.5; font-size: 15px; word-wrap: break-word; }
             .user { align-self: flex-end; background-color: #2f2f2f; color: #ececec; border-bottom-right-radius: 2px; }
             .bot { align-self: flex-start; background-color: #171717; color: #d1d5db; border: 1px solid #2f2f2f; border-bottom-left-radius: 2px; }
+
+            /* Formatting overrides for Markdown Elements inside chat bubbles */
+            .msg p { margin-bottom: 8px; }
+            .msg p:last-child { margin-bottom: 0; }
+            .msg ul, .msg ol { margin-left: 20px; margin-bottom: 8px; }
+            .msg code { background-color: #2b2b2b; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 14px; }
+            .msg pre { background-color: #1e1e1e; padding: 10px; border-radius: 6px; overflow-x: auto; margin-bottom: 8px; }
+            .msg pre code { background-color: transparent; padding: 0; }
 
             .input-area { padding: 12px 16px 16px 16px; background-color: #212121; display: flex; flex-direction: column; align-items: center; }
             .input-box { width: 100%; max-width: 800px; margin: 0 auto; display: flex; background-color: #2f2f2f; border: 1px solid #424242; border-radius: 12px; overflow: hidden; }
@@ -301,7 +311,10 @@ async def root():
                 currentChat.messages.forEach(m => {
                     const div = document.createElement('div');
                     div.className = `msg ${m.role}`;
-                    div.innerText = m.content;
+                    
+                    // Parse Markdown content into formatted HTML using marked
+                    div.innerHTML = typeof marked !== 'undefined' ? marked.parse(m.content) : m.content;
+                    
                     chatbox.appendChild(div);
                 });
                 chatbox.scrollTop = chatbox.scrollHeight;

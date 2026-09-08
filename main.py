@@ -16,7 +16,7 @@ tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
 
 class ChatRequest(BaseModel):
     message: str
-    history: List[Dict[str, Any]] = []  # Accepts previous chat history
+    history: List[Dict[str, Any]] = []
 
 
 # --- ROOT ROUTE: ChatGPT-Style Interface ---
@@ -135,7 +135,6 @@ async def root():
 
                 const chatbox = document.getElementById('chatbox');
                 
-                // Create a new session if none is active
                 if (!activeChatId) {
                     activeChatId = Date.now();
                     const newChat = {
@@ -150,7 +149,6 @@ async def root():
 
                 const currentChat = chats.find(c => c.id === activeChatId);
                 
-                // Get memory history prior to appending current prompt
                 const historyToSend = currentChat.messages.map(m => ({
                     role: m.role === 'bot' ? 'assistant' : 'user',
                     content: m.content
@@ -161,7 +159,6 @@ async def root():
                 renderMessages();
                 input.value = '';
 
-                // Waiting state indicator
                 const botMsgDiv = document.createElement('div');
                 botMsgDiv.className = 'msg bot';
                 botMsgDiv.innerText = 'Thinking...';
@@ -268,10 +265,7 @@ def fetch_tavily_text_only(query: str) -> str:
     try:
         search_response = tavily_client.search(query=query, max_results=3)
         results = search_response.get("results", [])
-        
-        # Extract only text content, omitting 'url' fields
         text_snippets = [item.get("content", "") for item in results if item.get("content")]
-        
         return "\n\n".join(text_snippets)
     except Exception as e:
         print(f"Tavily Search Error: {e}")
@@ -317,14 +311,16 @@ async def chat_endpoint(request: ChatRequest):
     if extra_context:
         web_context += f"\n{extra_context}"
 
-    # 3. System Prompt enforcing text-only response guardrails
+    # 3. System Prompt enforcing text-only response and strict context isolation rules
     system_prompt = (
-        "You are ARCH-AI, a text-only intelligent assistant.\n\n"
-        "STRICT OUTPUT RULES:\n"
-        "1. Provide direct, factual, and complete answers based on the context provided.\n"
-        "2. Absolutely DO NOT output, print, or generate any URLs, hyperlinks, or website links in your response.\n"
-        "3. EXCEPTION: Include URLs/links ONLY if the user explicitly uses words like 'links', 'sources', 'urls', or 'websites' in their prompt.\n"
-        "4. Never state that you lack real-time data when context is provided."
+        "You are ARCH-AI, an intelligent, text-only assistant.\n\n"
+        "STRICT CONTEXT & OUTPUT RULES:\n"
+        "1. The 'Context Information' provided below comes from EXTERNAL live web searches. "
+        "DO NOT assume or state that the user is the person or subject mentioned in the web search context.\n"
+        "2. Address the user directly as a helpful peer. Answer their question using the facts in the context without assigning the identities found in search results to the user.\n"
+        "3. Absolutely DO NOT output, print, or generate any URLs, hyperlinks, or website links in your response.\n"
+        "4. EXCEPTION: Include URLs/links ONLY if the user explicitly uses words like 'links', 'sources', 'urls', or 'websites' in their prompt.\n"
+        "5. Never state that you lack real-time data when context is provided."
     )
 
     # 4. Assemble Messages Array starting with System Prompt
@@ -332,12 +328,12 @@ async def chat_endpoint(request: ChatRequest):
         {"role": "system", "content": system_prompt}
     ]
 
-    # Inject conversation history into messages payload
+    # Inject conversation history
     for item in request.history:
         if item.get("role") in ["user", "assistant"] and item.get("content"):
             messages.append({"role": item["role"], "content": item["content"]})
 
-    # Attach live web context if present
+    # Attach live web context
     if web_context:
         messages.append({
             "role": "system", 

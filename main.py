@@ -1,6 +1,7 @@
 import os
 import requests
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from groq import Groq
 from tavily import TavilyClient
@@ -15,14 +16,73 @@ class ChatRequest(BaseModel):
     message: str
 
 
-# --- ROOT ROUTE (Fixes {"detail": "Not Found"} in browser) ---
-@app.get("/")
+# --- ROOT ROUTE: Web Interface ---
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    return {
-        "status": "online",
-        "system": "ARCH-AI API",
-        "message": "Backend is running. Send POST requests to /chat or visit /docs for API UI."
-    }
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ARCH-AI Interface</title>
+        <style>
+            * { box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #c9d1d9; max-width: 700px; margin: 40px auto; padding: 20px; }
+            h2 { color: #58a6ff; text-align: center; }
+            #chatbox { height: 420px; overflow-y: auto; border: 1px solid #30363d; padding: 15px; background: #161b22; border-radius: 8px; margin-bottom: 15px; }
+            .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 6px; line-height: 1.4; word-wrap: break-word; }
+            .user { background: #1f6feb; color: white; align-self: flex-end; margin-left: 20%; }
+            .bot { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; margin-right: 20%; }
+            .input-container { display: flex; gap: 10px; }
+            input { flex: 1; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; font-size: 15px; }
+            input:focus { outline: none; border-color: #58a6ff; }
+            button { padding: 12px 20px; background: #238636; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 15px; }
+            button:hover { background: #2ea043; }
+        </style>
+    </head>
+    <body>
+        <h2>ARCH-AI Terminal</h2>
+        <div id="chatbox"></div>
+        <div class="input-container">
+            <input type="text" id="userInput" placeholder="Ask a question..." onkeydown="if(event.key==='Enter') sendMsg()">
+            <button onclick="sendMsg()">Send</button>
+        </div>
+
+        <script>
+            async function sendMsg() {
+                const input = document.getElementById('userInput');
+                const chatbox = document.getElementById('chatbox');
+                const text = input.value.trim();
+                if (!text) return;
+
+                chatbox.innerHTML += `<div class="msg user">${text}</div>`;
+                input.value = '';
+                chatbox.scrollTop = chatbox.scrollHeight;
+
+                const botMsgDiv = document.createElement('div');
+                botMsgDiv.className = 'msg bot';
+                botMsgDiv.innerText = 'Thinking...';
+                chatbox.appendChild(botMsgDiv);
+                chatbox.scrollTop = chatbox.scrollHeight;
+
+                try {
+                    const res = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: text })
+                    });
+                    const data = await res.json();
+                    botMsgDiv.innerText = data.response || data.detail || 'Error getting response.';
+                } catch (e) {
+                    botMsgDiv.innerText = 'Error connecting to server.';
+                }
+                chatbox.scrollTop = chatbox.scrollHeight;
+            }
+        </script>
+    </body>
+    </html>
+    """
 
 
 # --- TAVILY TEXT-ONLY HELPER ---
@@ -32,7 +92,7 @@ def fetch_tavily_text_only(query: str) -> str:
         search_response = tavily_client.search(query=query, max_results=3)
         results = search_response.get("results", [])
         
-        # Extract only text content, ignoring 'url' fields
+        # Extract only text content, omitting 'url' fields
         text_snippets = [item.get("content", "") for item in results if item.get("content")]
         
         return "\n\n".join(text_snippets)

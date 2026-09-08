@@ -16,7 +16,7 @@ class ChatRequest(BaseModel):
     message: str
 
 
-# --- ROOT ROUTE: Web Interface ---
+# --- ROOT ROUTE: ChatGPT-Style Interface ---
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return """
@@ -27,39 +27,131 @@ async def root():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>ARCH-AI Interface</title>
         <style>
-            * { box-sizing: border-box; }
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #c9d1d9; max-width: 700px; margin: 40px auto; padding: 20px; }
-            h2 { color: #58a6ff; text-align: center; }
-            #chatbox { height: 420px; overflow-y: auto; border: 1px solid #30363d; padding: 15px; background: #161b22; border-radius: 8px; margin-bottom: 15px; }
-            .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 6px; line-height: 1.4; word-wrap: break-word; }
-            .user { background: #1f6feb; color: white; align-self: flex-end; margin-left: 20%; }
-            .bot { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; margin-right: 20%; }
-            .input-container { display: flex; gap: 10px; }
-            input { flex: 1; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; font-size: 15px; }
-            input:focus { outline: none; border-color: #58a6ff; }
-            button { padding: 12px 20px; background: #238636; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 15px; }
-            button:hover { background: #2ea043; }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #212121; color: #ececec; display: flex; height: 100vh; overflow: hidden; }
+
+            /* Sidebar styling */
+            #sidebar { width: 260px; background-color: #171717; display: flex; flex-direction: column; transition: width 0.3s ease; border-right: 1px solid #2f2f2f; z-index: 10; }
+            #sidebar.collapsed { width: 0; overflow: hidden; border-right: none; }
+            
+            .sidebar-header { padding: 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2f2f2f; }
+            .sidebar-header h1 { font-size: 18px; color: #58a6ff; font-weight: 700; }
+            
+            .btn-new-chat { margin: 12px; padding: 10px 14px; background-color: #2f2f2f; color: #fff; border: 1px solid #424242; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 14px; transition: background 0.2s; }
+            .btn-new-chat:hover { background-color: #383838; }
+
+            .chat-list-container { flex: 1; overflow-y: auto; padding: 8px; }
+            .section-label { font-size: 11px; color: #8e8e8e; text-transform: uppercase; margin: 8px 8px 4px 8px; font-weight: 600; }
+            
+            .chat-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 6px; cursor: pointer; color: #b4b4b4; margin-bottom: 4px; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; transition: background 0.2s; }
+            .chat-item:hover, .chat-item.active { background-color: #2f2f2f; color: #fff; }
+            .chat-item.pinned { border-left: 3px solid #58a6ff; }
+            
+            .chat-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px; }
+            .chat-actions { display: none; gap: 4px; }
+            .chat-item:hover .chat-actions { display: flex; }
+            
+            .action-btn { background: none; border: none; color: #8e8e8e; cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 4px; }
+            .action-btn:hover { color: #fff; background-color: #424242; }
+
+            /* Main view */
+            #main-content { flex: 1; display: flex; flex-direction: column; height: 100vh; position: relative; }
+            
+            .top-bar { height: 50px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #2f2f2f; background-color: #212121; gap: 12px; }
+            .toggle-sidebar-btn { background: none; border: none; color: #b4b4b4; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+            .toggle-sidebar-btn:hover { background-color: #2f2f2f; color: #fff; }
+            .app-title-top { font-size: 16px; font-weight: 700; color: #58a6ff; }
+
+            #chatbox { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 800px; margin: 0 auto; }
+            
+            .msg { display: flex; flex-direction: column; max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.5; font-size: 15px; word-wrap: break-word; }
+            .user { align-self: flex-end; background-color: #2f2f2f; color: #ececec; border-bottom-right-radius: 2px; }
+            .bot { align-self: flex-start; background-color: #171717; color: #d1d5db; border: 1px solid #2f2f2f; border-bottom-left-radius: 2px; }
+
+            .input-area { padding: 16px; background-color: #212121; }
+            .input-box { width: 100%; max-width: 800px; margin: 0 auto; display: flex; background-color: #2f2f2f; border: 1px solid #424242; border-radius: 12px; overflow: hidden; }
+            input { flex: 1; padding: 14px; background: transparent; border: none; color: #fff; font-size: 15px; outline: none; }
+            button.send-btn { padding: 0 20px; background-color: #58a6ff; border: none; color: #000; font-weight: 700; cursor: pointer; transition: background 0.2s; }
+            button.send-btn:hover { background-color: #79b8ff; }
         </style>
     </head>
     <body>
-        <h2>ARCH-AI Terminal</h2>
-        <div id="chatbox"></div>
-        <div class="input-container">
-            <input type="text" id="userInput" placeholder="Ask a question..." onkeydown="if(event.key==='Enter') sendMsg()">
-            <button onclick="sendMsg()">Send</button>
+        <div id="sidebar">
+            <div class="sidebar-header">
+                <h1>ARCH-AI</h1>
+            </div>
+            <button class="btn-new-chat" onclick="startNewChat()">+ New Chat</button>
+            <div class="chat-list-container">
+                <div class="section-label">Pinned</div>
+                <div id="pinned-list"></div>
+                <div class="section-label" style="margin-top: 16px;">Recent Chats</div>
+                <div id="chats-list"></div>
+                <div class="section-label" style="margin-top: 16px;">Archived</div>
+                <div id="archived-list"></div>
+            </div>
+        </div>
+
+        <div id="main-content">
+            <div class="top-bar">
+                <button class="toggle-sidebar-btn" onclick="toggleSidebar()" title="Toggle Sidebar">☰</button>
+                <span class="app-title-top">ARCH-AI</span>
+            </div>
+
+            <div id="chatbox"></div>
+
+            <div class="input-area">
+                <div class="input-box">
+                    <input type="text" id="userInput" placeholder="Ask ARCH-AI a question..." onkeydown="if(event.key==='Enter') sendMsg()">
+                    <button class="send-btn" onclick="sendMsg()">Send</button>
+                </div>
+            </div>
         </div>
 
         <script>
+            let chats = [];
+            let activeChatId = null;
+
+            function toggleSidebar() {
+                document.getElementById('sidebar').classList.toggle('collapsed');
+            }
+
+            function startNewChat() {
+                activeChatId = null;
+                document.getElementById('chatbox').innerHTML = '';
+                renderSidebar();
+            }
+
+            function generateSummary(text) {
+                return text.length > 25 ? text.substring(0, 22) + '...' : text;
+            }
+
             async function sendMsg() {
                 const input = document.getElementById('userInput');
-                const chatbox = document.getElementById('chatbox');
                 const text = input.value.trim();
                 if (!text) return;
 
-                chatbox.innerHTML += `<div class="msg user">${text}</div>`;
-                input.value = '';
-                chatbox.scrollTop = chatbox.scrollHeight;
+                const chatbox = document.getElementById('chatbox');
+                
+                // If starting a fresh chat session
+                if (!activeChatId) {
+                    activeChatId = Date.now();
+                    const newChat = {
+                        id: activeChatId,
+                        title: generateSummary(text),
+                        messages: [],
+                        isPinned: false,
+                        isArchived: false
+                    };
+                    chats.unshift(newChat);
+                }
 
+                const currentChat = chats.find(c => c.id === activeChatId);
+                currentChat.messages.push({ role: 'user', content: text });
+
+                renderMessages();
+                input.value = '';
+
+                // Waiting state indicator
                 const botMsgDiv = document.createElement('div');
                 botMsgDiv.className = 'msg bot';
                 botMsgDiv.innerText = 'Thinking...';
@@ -73,11 +165,83 @@ async def root():
                         body: JSON.stringify({ message: text })
                     });
                     const data = await res.json();
-                    botMsgDiv.innerText = data.response || data.detail || 'Error getting response.';
+                    const botResponse = data.response || data.detail || 'Error receiving response.';
+                    
+                    currentChat.messages.push({ role: 'bot', content: botResponse });
                 } catch (e) {
-                    botMsgDiv.innerText = 'Error connecting to server.';
+                    currentChat.messages.push({ role: 'bot', content: 'Error connecting to backend.' });
                 }
+
+                renderMessages();
+                renderSidebar();
+            }
+
+            function renderMessages() {
+                const chatbox = document.getElementById('chatbox');
+                chatbox.innerHTML = '';
+                if (!activeChatId) return;
+
+                const currentChat = chats.find(c => c.id === activeChatId);
+                if (!currentChat) return;
+
+                currentChat.messages.forEach(m => {
+                    const div = document.createElement('div');
+                    div.className = `msg ${m.role}`;
+                    div.innerText = m.content;
+                    chatbox.appendChild(div);
+                });
                 chatbox.scrollTop = chatbox.scrollHeight;
+            }
+
+            function renderSidebar() {
+                const pinnedList = document.getElementById('pinned-list');
+                const chatsList = document.getElementById('chats-list');
+                const archivedList = document.getElementById('archived-list');
+
+                pinnedList.innerHTML = '';
+                chatsList.innerHTML = '';
+                archivedList.innerHTML = '';
+
+                chats.forEach(chat => {
+                    const item = document.createElement('div');
+                    item.className = `chat-item ${chat.id === activeChatId ? 'active' : ''} ${chat.isPinned ? 'pinned' : ''}`;
+                    item.onclick = () => { activeChatId = chat.id; renderMessages(); renderSidebar(); };
+
+                    item.innerHTML = `
+                        <span class="chat-title">${chat.title}</span>
+                        <div class="chat-actions">
+                            <button class="action-btn" title="Pin" onclick="event.stopPropagation(); togglePin(${chat.id})">📌</button>
+                            <button class="action-btn" title="Archive" onclick="event.stopPropagation(); toggleArchive(${chat.id})">📥</button>
+                            <button class="action-btn" title="Delete" onclick="event.stopPropagation(); deleteChat(${chat.id})">🗑️</button>
+                        </div>
+                    `;
+
+                    if (chat.isArchived) {
+                        archivedList.appendChild(item);
+                    } else if (chat.isPinned) {
+                        pinnedList.appendChild(item);
+                    } else {
+                        chatsList.appendChild(item);
+                    }
+                });
+            }
+
+            function togglePin(id) {
+                const chat = chats.find(c => c.id === id);
+                if (chat) chat.isPinned = !chat.isPinned;
+                renderSidebar();
+            }
+
+            function toggleArchive(id) {
+                const chat = chats.find(c => c.id === id);
+                if (chat) chat.isArchived = !chat.isArchived;
+                renderSidebar();
+            }
+
+            function deleteChat(id) {
+                chats = chats.filter(c => c.id !== id);
+                if (activeChatId === id) startNewChat();
+                else renderSidebar();
             }
         </script>
     </body>
